@@ -4,6 +4,8 @@ import com.api.msaccount.dto.MoneyRequest;
 import com.api.msaccount.model.Account;
 import com.api.msaccount.service.AccountService;
 import com.api.msaccount.enums.AccountType;
+import com.api.msaccount.strategy.WithdrawalStrategy;
+import com.api.msaccount.strategy.WithdrawalStrategyFactory;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -76,23 +78,21 @@ public class AccountController {
     public ResponseEntity<Map<String, Object>> withdrawAccount(@PathVariable int id ,@RequestBody MoneyRequest moneyRequest) {
         Optional<Account> accountExist = accountService.getAccountById(id);
         if (accountExist.isPresent()) {
-          Map<String, Object> response = new HashMap<>();
-          Account _account = accountExist.get();
-          Double balanceTemp = _account.getBalance() - moneyRequest.getMoney();
-          if(_account.getAccountType() == AccountType.AHORRO && balanceTemp < 0){
-            response.put("message", "El saldo no puede ser menor a 0 - Cuenta AHORRO");
+            Account _account = accountExist.get();
+            WithdrawalStrategy strategy = WithdrawalStrategyFactory.getStrategy(_account.getAccountType());
+
+            Map<String, Object> response = new HashMap<>();
+            if (!strategy.canWithdraw(_account.getBalance(), moneyRequest.getMoney())) {
+                response.put("message", strategy.getErrorMessage());
+                return new ResponseEntity<>(response, HttpStatus.OK);
+            }
+
+            _account.setBalance(_account.getBalance() - moneyRequest.getMoney());
+            response.put("message", "Se ha retirado dinero correctamente");
+            response.put("data", accountService.saveAccount(_account));
             return new ResponseEntity<>(response, HttpStatus.OK);
-          }
-          if(_account.getAccountType() == AccountType.CORRIENTE && balanceTemp < -500){
-            response.put("message", "El saldo no puede ser menor a -500 - Cuenta CORRIENTE");            
-            return new ResponseEntity<>(response, HttpStatus.OK);
-          }
-          _account.setBalance(balanceTemp);
-          response.put("message", "Se ha retirado dinero correctamente");
-          response.put("data", accountService.saveAccount(_account));
-          return new ResponseEntity<>(response, HttpStatus.OK);
         } else {
-          return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
     }
 
